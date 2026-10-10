@@ -1,0 +1,14 @@
+@IssueTracker.Api_HostAddress = http://localhost:5062
+
+# Bootstrap: 501 Problem Details. After TODO-WF-001: 200, JSON id/name list.
+GET {{IssueTracker.Api_HostAddress}}/api/projects
+Accept: application/json
+
+###
+
+# Development-only OpenAPI document (no Swagger UI installed).
+GET {{IssueTracker.Api_HostAddress}}/openapi/v1.json
+Accept: application/json
+
+### Unknown route: 404
+GET {{IssueTracker.Api_HostAddress}}/api/unknown

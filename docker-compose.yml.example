@@ -1,0 +1,17 @@
+# Step 03 only; copy to docker-compose.yml when ready.
+# TODO-WF-009 (YOU): Choose a supported SQL Server image/tag and host port.
+# Explain EULA acceptance, password requirements, ports and named volumes.
+# Acceptance: DB connects and retains data after container recreation.
+services:
+  sqlserver:
+    image: ${SQLSERVER_IMAGE:?Choose a supported SQL Server image and explicit tag}
+    environment:
+      ACCEPT_EULA: ${SQLSERVER_ACCEPT_EULA:?Review the SQL Server licence first}
+      MSSQL_SA_PASSWORD: ${SQLSERVER_SA_PASSWORD:?Supply a local password outside Git}
+    ports:
+      - "127.0.0.1:${SQLSERVER_HOST_PORT:?Choose an available local port}:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+
+volumes:
+  sqlserver-data:
