@@ -134,6 +134,43 @@ The request records only describe input. They do not perform validation,
 persist data or verify referenced entities. TODO-WF-007 now validates incoming
 create-project requests. TODO-WF-008 and the full section mastery gate remain unfinished.
 
+### How a request record differs from an entity
+
+Actual CreateProjectRequest declaration (comments omitted):
+
+```csharp
+public sealed record CreateProjectRequest(
+    int OrganisationId,
+    string Name,
+    string? Description = null);
+```
+This positional record declaration creates public properties with `init`
+accessors and a matching constructor. `init` permits setting a property during
+initialization; ordinary assignment afterwards is not allowed. A record also
+compares its property values for equality. It does not enforce domain rules.
+
+Usage example with the implemented type:
+
+```csharp
+var request = new CreateProjectRequest(1, "Tracker");
+var changedRequest = request with { Name = "Learning Sandbox" };
+```
+The first line leaves Description null. The `with` expression creates a copy
+with a different name; it does not alter the original request. Neither line
+creates a domain Project, sends HTTP, or saves anything.
+
+ASP.NET Core **deserializes** JSON by turning its fields into a request object.
+The response is **serialized** in the other direction: response properties
+become JSON fields. Default web JSON settings use camelCase, such as
+`organisationId` for the C# property `OrganisationId`.
+
+Accepting only operation-specific fields avoids **over-posting**: letting a
+caller set internal fields simply because they exist on an entity. The project
+create contract has no Id or CreatedAt properties, so those values cannot be
+carried through this DTO into a future creation operation. Unknown JSON fields
+are currently ignored, rather than rejected; excluding a field is not the same
+as reporting an error when the caller sends it.
+
 ## Implemented project input validation (TODO-WF-007)
 
 These are explicit learning-project choices, not limits imposed by .NET:
@@ -192,6 +229,127 @@ Production, covering name min-1/min/max/max+1, description max-1/max/max+1,
 omitted/null/blank values, nonpositive organisation ids and malformed/wrong-type
 JSON. GET still returned 200 and an unknown route returned 404. These are manual
 runtime checks; the five ignored NUnit validation exercises remain TODO-WF-008.
+
+### Follow one request through the endpoint
+
+Example HTTP body using the implemented contract:
+
+```json
+{"organisationId":1,"name":"ab","description":null}
+```
+1. ASP.NET Core reads the JSON and binds it to CreateProjectRequest. Binding
+   means supplying the endpoint parameter from the incoming request.
+2. The endpoint calls ProjectRequestValidation.Validate. The organisation id
+   passes, but the two-character name fails the minimum length.
+3. Validate returns an errors dictionary containing a `name` entry.
+4. Results.ValidationProblem turns those messages into an HTTP 400 response.
+   No domain entity is constructed and nothing is persisted.
+
+Response fields for this example (shortened):
+
+```json
+{
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errors": {
+    "name": ["Name must contain between 3 and 100 characters after trimming."]
+  }
+}
+```
+A **dictionary** stores values under keys. Here each key names a field, and
+each value is an array of messages for that field. Clients can associate a
+`name` error with a name input box. Problem Details is a structured error body;
+its `status` field agrees with the actual HTTP status code.
+
+Actual declarations/assignment from the validator:
+
+```csharp
+var errors = new Dictionary<string, string[]>();
+errors["organisationId"] = ["OrganisationId must be a positive integer."];
+```
+`string[]` means an array of strings. The square brackets on the right are a
+C# collection expression that constructs that array. The assignment records
+an error; it does not throw an exception. Several independent field errors
+can therefore be collected in the same response.
+
+### Why malformed JSON needs a separate path
+
+A body such as `{"name":` cannot be converted into the expected request object.
+ASP.NET Core rejects it before entering the endpoint, so calling Validate in
+the endpoint cannot handle that failure. A numeric Name also fails binding
+because the contract expects a string.
+
+Actual configuration and middleware excerpts (shortened):
+
+```csharp
+builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
+
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next(context);
+    }
+    catch (BadHttpRequestException exception) when (!context.Response.HasStarted)
+    {
+        // The actual handler returns ValidationProblem for status 400,
+        // and preserves other binding statuses with Results.Problem.
+    }
+});
+```
+**Middleware** wraps the next part of the HTTP pipeline. `await next(context)`
+lets the later middleware and endpoint run, while this middleware can catch
+a binding exception coming back from them. `async`/`await` let the method wait
+for asynchronous work without keeping a thread blocked for that wait.
+HasStarted means response headers have already been sent; once they have,
+this handler cannot replace the response with a new error status/body.
+
+The same error shape is useful even though the causes differ: malformed input
+uses the general `request` key; a valid JSON body with invalid values uses
+field keys such as `name`. A caught binding exception does not make all domain
+exceptions HTTP 400: the middleware catches only BadHttpRequestException.
+
+### HTTP validation and domain invariants have different jobs
+
+The HTTP validator explains input problems to callers. Domain guards keep
+objects valid wherever they are constructed or edited. Both check nonblank
+names, but the current domain does not enforce the HTTP length limits.
+
+Usage example with the current domain (not an endpoint or persistence path):
+
+```csharp
+var project = new IssueTracker.Api.Domain.Project(1, "ab");
+```
+This succeeds because the domain currently requires a nonblank name. The POST
+endpoint rejects the same name because its API rule requires at least three
+characters. If a length limit must hold for every domain object, it would need
+domain enforcement too. Positive ids similarly express the shape of a reference;
+they do not establish existence, identity, ownership or permission.
+
+### What remains for TODO-WF-008
+
+Write active unit assertions against ProjectRequestValidation.Validate.
+The validator has no HTTP, SQL or network dependency, so these tests can run
+quickly in isolation. The existing ignored tests still contain Assert.Fail
+placeholders; passing the test command while they are skipped is not completion.
+
+| Case, with other fields valid | Expected result |
+| --- | --- |
+| Name absent/null/empty/whitespace-only | Name error |
+| Trimmed name length 2 | Name error |
+| Trimmed name lengths 3 and 100 | No name error |
+| Trimmed name length 101 | Name error |
+| Description absent/null/empty/whitespace-only within limit | No description error |
+| Description lengths 1,999 and 2,000 | No description error |
+| Description length 2,001 | Description error |
+| OrganisationId zero or negative | OrganisationId error |
+| Valid values throughout | Empty errors dictionary |
+
+Test boundaries on both sides to expose mistakes such as `<` versus `<=`.
+Keep every unrelated value valid so one rule does not hide the one being tested.
+Binding/malformed-JSON checks belong to HTTP verification because a direct
+validator unit test receives a C# object, not raw JSON. Do not enable an ignored
+test until its assertions exercise the intended behavior.
 
 ## TODO markers
 | ID | Location |
