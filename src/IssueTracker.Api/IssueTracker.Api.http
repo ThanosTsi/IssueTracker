@@ -1,6 +1,6 @@
 @IssueTracker.Api_HostAddress = http://localhost:5062
 
-# Bootstrap: 501 Problem Details. After TODO-WF-001: 200, JSON id/name list.
+# 200: hard-coded sample projects using the expanded response contract.
 GET {{IssueTracker.Api_HostAddress}}/api/projects
 Accept: application/json
 
@@ -12,3 +12,21 @@ Accept: application/json
 
 ### Unknown route: 404
 GET {{IssueTracker.Api_HostAddress}}/api/unknown
+
+### Invalid input: 400 Validation Problem Details
+POST {{IssueTracker.Api_HostAddress}}/api/projects
+Content-Type: application/json
+
+{"organisationId":1,"name":"   "}
+
+### Valid input: 501 persistence placeholder; nothing is saved
+POST {{IssueTracker.Api_HostAddress}}/api/projects
+Content-Type: application/json
+
+{"organisationId":1,"name":"Tracker","description":"Track bugs"}
+
+### Malformed JSON: 400 with the same validation problem shape
+POST {{IssueTracker.Api_HostAddress}}/api/projects
+Content-Type: application/json
+
+{"organisationId":1,"name":

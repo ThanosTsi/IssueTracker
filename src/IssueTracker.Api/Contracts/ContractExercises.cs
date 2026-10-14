@@ -6,7 +6,4 @@ namespace IssueTracker.Api.Contracts;
 // Worked examples live in CreateProjectRequest.cs, UpdateProjectRequest.cs,
 // CreateWorkItemRequest.cs, WorkItemResponse.cs and ProjectResponse.cs.
 
-// TODO-WF-007 (YOU): Add project input validation at the HTTP boundary.
-// Learning goal: distinguish malformed input from business rules.
-// Acceptance: missing/blank and out-of-range names/descriptions yield 400;
-// valid input proceeds. Choose/document limits first. Persistence comes later.
+// The TODO-WF-007 marker and validation rules are in ProjectRequestValidation.cs.

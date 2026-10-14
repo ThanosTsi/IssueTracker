@@ -29,8 +29,9 @@ coupling API contracts to a future database. Handbook commits 7–10.
    actual assertions. Add min-1/min/max/max+1 cases and description boundaries,
    and valid/null/blank/missing cases as appropriate. Remove `Ignore` only after
    the tests assert the behavior. Keep these tests independent of SQL/network.
-5. Edit README/contracts documentation to explain your chosen limits and
-   temporary valid-input response. Do not let the agent implement these choices.
+5. Keep README/contracts documentation aligned with the chosen limits and
+   temporary valid-input response. TODO-WF-007 was implemented by the agent
+   at your explicit request; explain its rules yourself before the mastery gate.
 
 ## Implemented domain rules (TODO-WF-005)
 An **invariant** is a rule that stays true for every usable instance of an entity.
@@ -47,7 +48,8 @@ respect the same rules, so these checks belong in the entity itself.
 - Status and priority must be defined enum values. Casting `(WorkItemStatus)99`
   is legal C#, so the entity explicitly rejects it. New items start as Todo/Low,
   preserving the earlier enum defaults.
-- Descriptions remain optional. Length limits remain your TODO-WF-007 exercise.
+- Descriptions remain optional. The HTTP boundary now applies the length limits
+  documented below in TODO-WF-007.
 
 Example of using the implemented entities:
 
@@ -90,7 +92,8 @@ The private Touch method prevents UpdatedAt from moving backwards if the
 system clock is corrected; it may stay equal when the clock has not advanced.
 
 Domain exceptions protect object state. They do not automatically become HTTP
-400 responses; boundary validation and HTTP error handling remain TODO-WF-007.
+400 responses; TODO-WF-007 now performs explicit boundary validation and HTTP
+error handling as documented below.
 DomainInvariantTests verify these rules without HTTP or SQL. The ignored
 TODO-WF-008 tests remain unfinished API validation exercises.
 
@@ -128,15 +131,74 @@ the data is still hard-coded. WorkItemResponse reuses the domain enums for now.
 Under the current JSON settings those enums serialize as numbers.
 
 The request records only describe input. They do not perform validation,
-persist data or verify referenced entities. TODO-WF-007 and TODO-WF-008 remain
-unfinished, and the full learning section is not complete.
+persist data or verify referenced entities. TODO-WF-007 now validates incoming
+create-project requests. TODO-WF-008 and the full section mastery gate remain unfinished.
+
+## Implemented project input validation (TODO-WF-007)
+
+These are explicit learning-project choices, not limits imposed by .NET:
+
+| Input | Rule |
+| --- | --- |
+| OrganisationId | Positive integer; missing, zero and negative values are rejected |
+| Name | Required; 3–100 UTF-16 code units after trimming surrounding whitespace |
+| Description | Optional; at most 2,000 UTF-16 code units including whitespace |
+
+C# `string.Length` counts UTF-16 code units; some characters, such as emoji,
+use two units. Name trimming is used for validation only: the DTO is not
+modified, and no trimmed value is persisted by this placeholder endpoint.
+Descriptions may be absent, null, empty or whitespace-only if within the limit.
+The name range provides a simple meaningful boundary exercise; the description
+cap keeps free-form text bounded. Revisit these product choices when requirements emerge.
+
+Actual validator excerpt:
+
+```csharp
+var name = request.Name?.Trim();
+if (string.IsNullOrEmpty(name))
+    errors["name"] = ["Name is required and cannot be blank."];
+else if (name.Length < MinNameLength || name.Length > MaxNameLength)
+    errors["name"] = [$"Name must contain between {MinNameLength} and {MaxNameLength} characters after trimming."];
+```
+`?.` allows the validator to handle missing/null input at runtime even though
+the request property is annotated as non-nullable. The validator returns
+field-specific messages, rather than constructing a domain entity or saving data.
+
+Actual endpoint excerpt (shortened):
+
+```csharp
+var errors = ProjectRequestValidation.Validate(request);
+if (errors.Count > 0)
+    return Results.ValidationProblem(errors);
+
+return Results.Problem(
+    statusCode: StatusCodes.Status501NotImplemented,
+    title: "Project persistence is not implemented",
+    detail: "The request passed validation. No project was created or saved.");
+```
+Invalid JSON and wrong field types fail during ASP.NET Core binding before
+this handler runs. RouteHandlerOptions.ThrowOnBadRequest is explicitly enabled
+in both environments, and middleware catches HTTP 400 binding failures to
+return the same Validation Problem Details structure, using a `request` error key.
+Invalid field values use their own field names. All these errors return
+`application/problem+json` with status 400 and an `errors` object.
+
+A valid request returns 501 Problem Details. It does not return 201, assign an
+id, check that the organisation exists, or modify the sample GET results.
+Unsupported content types remain ASP.NET Core HTTP 415 responses.
+
+HTTP verification passed for 28 POST cases in each of Development and
+Production, covering name min-1/min/max/max+1, description max-1/max/max+1,
+omitted/null/blank values, nonpositive organisation ids and malformed/wrong-type
+JSON. GET still returned 200 and an unknown route returned 404. These are manual
+runtime checks; the five ignored NUnit validation exercises remain TODO-WF-008.
 
 ## TODO markers
 | ID | Location |
 | --- | --- |
 | TODO-WF-005 | Marker in Domain/Organisation.cs; models in Organisation.cs, Project.cs, WorkItem.cs; enums in WorkItemStatus.cs and WorkItemPriority.cs |
 | TODO-WF-006 | Marker in Contracts/ContractExercises.cs; worked examples in CreateProjectRequest.cs, UpdateProjectRequest.cs, CreateWorkItemRequest.cs, WorkItemResponse.cs and ProjectResponse.cs |
-| TODO-WF-007 | Contracts/ContractExercises.cs; implement HTTP wiring in Program.cs |
+| TODO-WF-007 | Marker in Contracts/ProjectRequestValidation.cs; HTTP wiring and binding error handling in Program.cs |
 | TODO-WF-008 | tests/IssueTracker.Api.Tests/ProjectValidationTests.cs |
 
 ## Acceptance criteria
@@ -153,8 +215,10 @@ dotnet test --filter FullyQualifiedName~ProjectValidationTests
 dotnet run --project src/IssueTracker.Api --launch-profile http
 # In another terminal; adapt payloads if you deliberately change the contract:
 Invoke-WebRequest http://localhost:5062/api/projects -Method Post -ContentType application/json -Body '{}'
-Invoke-WebRequest http://localhost:5062/api/projects -Method Post -ContentType application/json -Body '{"name":"   "}'
-# Also send min-1/min/max/max+1 and your chosen valid request.
+Invoke-WebRequest http://localhost:5062/api/projects -Method Post -ContentType application/json -Body '{"organisationId":1,"name":"   "}'
+# Valid input: 501; no data is persisted.
+Invoke-WebRequest http://localhost:5062/api/projects -Method Post -ContentType application/json -Body '{"organisationId":1,"name":"Tracker"}'
+# Also send name lengths 2/3/100/101 and description lengths 1999/2000/2001.
 ```
 PowerShell may throw on non-success HTTP codes; inspect the exception's response
 status/body. A thrown client exception does not mean the server failed to respond.
