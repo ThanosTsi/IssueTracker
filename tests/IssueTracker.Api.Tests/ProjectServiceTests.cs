@@ -18,10 +18,16 @@ public sealed class ProjectServiceTests
         Assert.That(projects, Has.Count.EqualTo(2));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(projects[0].Id, Is.EqualTo(Guid.Parse("11111111-1111-1111-1111-111111111111")));
+            Assert.That(projects[0].Id, Is.EqualTo(1));
             Assert.That(projects[0].Name, Is.EqualTo("Issue Tracker"));
-            Assert.That(projects[1].Id, Is.EqualTo(Guid.Parse("22222222-2222-2222-2222-222222222222")));
+            Assert.That(projects[1].Id, Is.EqualTo(2));
             Assert.That(projects[1].Name, Is.EqualTo("Learning Sandbox"));
+            Assert.That(projects[0].OrganisationId, Is.EqualTo(1));
+            Assert.That(projects[1].OrganisationId, Is.EqualTo(1));
+            Assert.That(projects[0].Description, Is.EqualTo("Track bugs and improvements"));
+            Assert.That(projects[1].Description, Is.Null);
+            Assert.That(projects[0].CreatedAt, Is.EqualTo(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)));
+            Assert.That(projects[1].CreatedAt, Is.EqualTo(new DateTimeOffset(2026, 1, 2, 0, 0, 0, TimeSpan.Zero)));
         }
 
 
