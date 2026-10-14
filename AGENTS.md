@@ -29,6 +29,11 @@ in the user's `.NET Backend & Azure Transition Handbook`, sections 37–39.
   use examples from the actual implementation. Preserve the human's notes;
   do not invent their reasoning or claim unverified exercises are complete.
   Format every question in the note as a level-three Markdown heading (`###`).
+  Whenever explaining code in Obsidian notes, include a relevant fenced code
+  snippet with its language, beside the explanation. Include configuration
+  and commands when those are discussed too. Prefer actual repository excerpts;
+  clearly label shortened excerpts and hypothetical examples. Explain what the
+  snippet does in plain language. Preserve existing human edits and frontmatter.
   New guides must add their questions to the note and include this completion
   requirement. Leave unfinished sections question-only unless asked otherwise.
   The user explicitly requested reference answers for steps 00 and 01.
